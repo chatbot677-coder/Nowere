@@ -11,6 +11,7 @@ import Toolbar from "../components/Toolbar";
 import Messeges from "../components/Messeges";
 import ReactMarkdown from "react-markdown";
 import "../components/Toolbar.css";
+import { forwardChat } from "../components/ForwardChatButton";
 
 function ChatHome() {
   const { id } = useParams();
@@ -176,24 +177,7 @@ const copyAllMessages = async () => {
   }
 };
 
-  const forwardChat = async () => {
-    if (!messages.length) {
-      alert("No chat selected to forward.");
-      return;
-    }
 
-    const recipient = window.prompt("Enter recipient email or name to forward this chat:");
-    if (!recipient) return;
-
-    const allText = getConversationText();
-    try {
-      await navigator.clipboard.writeText(allText);
-      alert(`Conversation copied. Paste it to forward to ${recipient}.`);
-    } catch (err) {
-      console.error(err);
-      alert("Unable to copy conversation. Please try again.");
-    }
-  };
 
   const handleVoice = () => {
     alert("Voice input coming soon!");
@@ -300,7 +284,7 @@ const copyAllMessages = async () => {
               setSelectionMode={setSelectionMode}
               showChatActions={selectedPairs.length > 0}
               onCopyAll={copyAllMessages}
-              onForward={forwardChat}
+              onForward={() => forwardChat(messages)}
             />
           </div>
 
