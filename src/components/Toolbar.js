@@ -1,8 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import "./Toolbar.css";
 import logoVideo from "../assets/lovo video.mp4";
+import { fetchJson } from "../utils/api";
 
-const Toolbar = ({ onSelectChat, onNewChat, activeChatId }) => {
+const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+
+const Toolbar = ({ onSelectChat, onNewChat, onBackendStatus, activeChatId, isAuthenticated }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [search, setSearch] = useState("");
   const [chats, setChats] = useState([]);
@@ -30,25 +33,38 @@ const Toolbar = ({ onSelectChat, onNewChat, activeChatId }) => {
   }, []);
 
   /* ===== FETCH CHATS ===== */
-  const fetchChats = async () => {
+  const fetchChats = useCallback(async () => {
+    // Don't fetch if user is not authenticated
+    if (!isAuthenticated) {
+      setChats([]);
+      return;
+    }
+
     try {
-      let url = "http://localhost:5000/api/chat";
+      let url = `${apiBase}/api/chat`;
 
       if (search.trim()) {
-        url = `http://localhost:5000/api/chat/search/${search}`;
+        url = `${apiBase}/api/chat/search/${search}`;
       }
 
-      const res = await fetch(url, {
+      const data = await fetchJson(url, {
         credentials: "include",
       });
 
-      const data = await res.json();
-
+      onBackendStatus?.(true);
       setChats(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Error fetching chats:", err);
+      const errorMsg = String(err.message || "").toLowerCase();
+      // Only report backend status as down for connection failures, not auth errors
+      if (!errorMsg.includes("unauthorized") && !errorMsg.includes("login required")) {
+        onBackendStatus?.(false);
+      }
+      // Don't log 401/unauthorized errors - they're expected when not logged in
+      if (!errorMsg.includes("unauthorized") && !errorMsg.includes("login required")) {
+        console.warn("Error fetching chats:", err.message || err);
+      }
     }
-  };
+  }, [onBackendStatus, search, isAuthenticated]);
 
   /* ✅ INITIAL LOAD */
   useEffect(() => {
@@ -62,22 +78,27 @@ const Toolbar = ({ onSelectChat, onNewChat, activeChatId }) => {
     }, 300);
 
     return () => clearTimeout(delay);
-  }, [search]);
+  }, [fetchChats, search]);
 
   /* 🔥 AUTO UPDATE (NO RELOAD NEEDED) */
   useEffect(() => {
+    // Only set auto-update interval if user is authenticated
+    if (!isAuthenticated) {
+      return;
+    }
+
     const interval = setInterval(() => {
       fetchChats();
     }, 2000); // every 2 seconds
 
     return () => clearInterval(interval);
-  }, [search]);
+  }, [fetchChats]);
 
   /* 🔥 INSTANT UPDATE AFTER NEW CHAT */
   useEffect(() => {
     if (!activeChatId) return;
     fetchChats();
-  }, [activeChatId]);
+  }, [activeChatId, fetchChats]);
 
   /* ===== UI ===== */
   return (

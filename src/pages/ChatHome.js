@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useCallback, useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import "./ChatHome.css";
+import { fetchJson } from "../utils/api";
 import mic from "../assets/mic.png";
 import voice from "../assets/voice-icon.png";
 import copyIcon from "../assets/copy-code-icon.png";
@@ -24,35 +25,65 @@ function ChatHome() {
   const [chatId, setChatId] = useState(null);
   const [selectedPairs, setSelectedPairs] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
+  const [backendWarning, setBackendWarning] = useState("");
 
-  const [ setUser] = useState(null);
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const backendWarningTimer = useRef(null);
 
- useEffect(() => {
-  fetch("http://localhost:5000/api/user", {
-    credentials: "include",
-    })
-      .then(res => {
-        if (!res.ok) throw new Error("Not logged in");
-        return res.json();
-      })
-      .then(data => {
+  const showBackendWarning = useCallback(() => {
+    if (backendWarningTimer.current) clearTimeout(backendWarningTimer.current);
+    setBackendWarning("Backend is not running. Please start the server and refresh.");
+    backendWarningTimer.current = setTimeout(() => setBackendWarning(""), 4000);
+  }, []);
+
+  useEffect(() => {
+    const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+    fetchJson(`${apiBase}/api/user`, { credentials: "include" })
+      .then((data) => {
         setUser(data);
-        // Fallback chain: Display Name -> Email Prefix -> Default
-        const name = data.displayName || data.email?.split("@")[0] || "User";
+        setIsAuthenticated(true);
+        const name = data?.displayName || data?.email?.split("@")[0] || "User";
         document.title = name;
-        console.log("User name loaded:", name); 
       })
       .catch((err) => {
-        console.error(err);
+        setIsAuthenticated(false);
+        const errorMsg = String(err.message || "").toLowerCase();
+        // Only show backend warning for actual connection failures, not auth errors
+        if (errorMsg.includes("backend not running") && !errorMsg.includes("unauthorized")) {
+          showBackendWarning();
+        }
         document.title = "My App";
       });
-  }, []);
+  }, [showBackendWarning]);
+
+  const loadChat = useCallback(async (chatId) => {
+    try {
+      setChatId(chatId);
+      const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+
+      const data = await fetchJson(`${apiBase}/api/chat/${chatId}`, {
+        credentials: "include",
+      });
+
+      if (data?.messages) {
+        setMessages(data.messages);
+      }
+    } catch (err) {
+      const errorMsg = String(err.message || "").toLowerCase();
+      // Only show backend warning for actual connection failures, not auth errors
+      if (errorMsg.includes("backend not running") && !errorMsg.includes("unauthorized")) {
+        showBackendWarning();
+      }
+      console.warn("Error loading chat:", err.message || err);
+    }
+  }, [showBackendWarning]);
 
   useEffect(() => {
     if (id) {
       loadChat(id);
     }
-  }, [id]);
+  }, [id, loadChat]);
 
   const togglePair = (index) => {
     const base = index % 2 === 0 ? index : index - 1;
@@ -72,23 +103,6 @@ function ChatHome() {
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
 
-  const loadChat = async (chatId) => {
-    try {
-      setChatId(chatId);
-
-      const res = await fetch(`http://localhost:5000/api/chat/${chatId}`, {
-        credentials: "include",
-      });
-
-      const data = await res.json();
-
-      if (data?.messages) {
-        setMessages(data.messages);
-      }
-    } catch (err) {
-      console.error("Error loading chat:", err);
-    }
-  };
 
   const onSelectChat = async (chat) => {
     loadChat(chat._id);
@@ -202,10 +216,11 @@ const copyAllMessages = async () => {
     setIsLoading(true);
 
     const startTime = Date.now();
+    const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
 
     try {
       // Save message to DB and get the AI reply from the backend saved chat
-      const dbResponse = await fetch("http://localhost:5000/api/chat/send", {
+      const dbData = await fetchJson(`${apiBase}/api/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -214,13 +229,6 @@ const copyAllMessages = async () => {
           chatId: chatId,
         }),
       });
-
-      if (!dbResponse.ok) {
-        const errorData = await dbResponse.json().catch(() => null);
-        throw new Error(errorData?.error || `DB save failed: ${dbResponse.status}`);
-      }
-
-      const dbData = await dbResponse.json();
       if (dbData.chatId) {
         setChatId(dbData.chatId);
         navigate(`/chat/${dbData.chatId}`);
@@ -242,13 +250,22 @@ const copyAllMessages = async () => {
         },
       ]);
     } catch (err) {
-      console.error("Chat error:", err);
+      console.error("Chat request failed:", err);
       setIsLoading(false);
+      const errorMsg = String(err.message || "").toLowerCase();
+      // Only show backend warning for actual connection failures, not auth errors
+      if (errorMsg.includes("backend not running") && !errorMsg.includes("unauthorized")) {
+        showBackendWarning();
+      }
       setMessages((prev) => [
         ...prev,
-        { 
-          role: "assistant", 
-          content: `Error: ${err.message || "Failed to connect to server. Please try again."}` 
+        {
+          role: "assistant",
+          content: errorMsg.includes("unauthorized") || errorMsg.includes("login required")
+            ? "Please log in to continue."
+            : errorMsg.includes("backend not running")
+            ? "Backend is not running. Please start the server and try again."
+            : `Error: ${err.message || "Failed to connect to server. Please try again."}`,
         },
       ]);
     }
@@ -258,15 +275,22 @@ const copyAllMessages = async () => {
     <>
       
       <Login />
+      {backendWarning && (
+        <div className="backend-warning-banner">{backendWarning}</div>
+      )}
       <div className="app-layout">
         <Toolbar
           onSelectChat={onSelectChat}
+          onBackendStatus={(isOnline) => {
+            if (!isOnline) showBackendWarning();
+          }}
           onNewChat={() => {
             setMessages([]);
             setChatId(null);
             navigate('/');
           }}
           activeChatId={chatId}
+          isAuthenticated={isAuthenticated}
         />
         <div className="main-content">
           
@@ -274,6 +298,9 @@ const copyAllMessages = async () => {
             <Navbar
               selectionMode={selectionMode}
               setSelectionMode={setSelectionMode}
+              onBackendStatus={(isOnline) => {
+                if (!isOnline) showBackendWarning();
+              }}
               showChatActions={selectedPairs.length > 0}
               onCopyAll={copyAllMessages}
               onForward={() => forwardChat(messages)}

@@ -1,36 +1,41 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./Navbar.css";
 import logo from "../assets/Logo.png";
+import { fetchJson } from "../utils/api";
 
-function Navbar({ selectionMode, setSelectionMode, showChatActions, onCopyAll, onForward }) {
+function Navbar({ selectionMode, setSelectionMode, showChatActions, onCopyAll, onForward, onBackendStatus }) {
   const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await fetch("http://localhost:5000/api/user", {
-          credentials: "include",
-        });
-        
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        
-        const data = await res.json();
-        setUser(data);
-      } catch (err) {
-        console.error("Failed to fetch user:", err);
-        setUser(null);
-      }
-    };
+  const fetchUser = useCallback(async () => {
+    try {
+      const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+      const data = await fetchJson(`${apiBase}/api/user`, {
+        credentials: "include",
+      });
 
+      onBackendStatus?.(true);
+      setUser(data);
+    } catch (err) {
+      const errorMsg = String(err.message || "").toLowerCase();
+      // Only report backend status as down for connection failures, not auth errors
+      if (!errorMsg.includes("unauthorized") && !errorMsg.includes("login required")) {
+        onBackendStatus?.(false);
+      }
+      // Don't log 401/unauthorized errors - they're expected when not logged in
+      if (!errorMsg.includes("unauthorized") && !errorMsg.includes("login required")) {
+        console.warn("Failed to fetch user:", err.message || err);
+      }
+      setUser(null);
+    }
+  }, [onBackendStatus]);
+
+  useEffect(() => {
     fetchUser();
 
-    // Refetch user data when navbar comes into focus
     const handleFocus = () => fetchUser();
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, []);
+  }, [fetchUser]);
 
   const handleLogout = async () => {
     try {

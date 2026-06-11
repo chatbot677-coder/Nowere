@@ -3,7 +3,8 @@ import "./Messeges.css";
 import { io } from "socket.io-client";
 import Enter from "../assets/Enter.png";
 
-const socket = io("http://localhost:5000", {
+const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+const socket = io(apiBase, {
   withCredentials: true,
 });
 
@@ -99,7 +100,7 @@ const Messeges = () => {
   =============================== */
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/user", {
+    fetch(`${apiBase}/api/user`, {
       credentials: "include",
     })
       .then((res) => res.json())
@@ -107,6 +108,13 @@ const Messeges = () => {
         if (data.id) {
           setUser(data);
           socket.emit("join", data.id);
+        }
+      })
+      .catch((err) => {
+        const errorMsg = String(err.message || "").toLowerCase();
+        // Don't log 401/unauthorized errors - they're expected when not logged in
+        if (!errorMsg.includes("unauthorized") && !errorMsg.includes("login required")) {
+          console.warn("Failed to fetch user in Messages:", err.message || err);
         }
       });
   }, []);
@@ -146,7 +154,7 @@ const Messeges = () => {
 
   const loadInbox = async () => {
     const res = await fetch(
-      "http://localhost:5000/api/messages",
+      `${apiBase}/api/messages`,
       { credentials: "include" }
     );
 
@@ -170,7 +178,7 @@ const Messeges = () => {
 
     const timer = setTimeout(async () => {
       const res = await fetch(
-        `http://localhost:5000/api/messages/search?q=${search}`,
+        `${apiBase}/api/messages/search?q=${search}`,
         { credentials: "include" }
       );
 
@@ -189,7 +197,7 @@ const Messeges = () => {
     setSelectedUser(u);
 
     const res = await fetch(
-      "http://localhost:5000/api/messages/start",
+      `${apiBase}/api/messages/start`,
       {
         method: "POST",
         headers: {
@@ -207,7 +215,7 @@ const Messeges = () => {
     setConversationId(convo._id);
 
     const msgRes = await fetch(
-      `http://localhost:5000/api/messages/${convo._id}`,
+      `${apiBase}/api/messages/${convo._id}`,
       { credentials: "include" }
     );
 
@@ -241,7 +249,7 @@ const Messeges = () => {
     ]);
 
     await fetch(
-      "http://localhost:5000/api/messages/send",
+      `${apiBase}/api/messages/send`,
       {
         method: "POST",
         headers: {

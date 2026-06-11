@@ -1,3 +1,18 @@
+.backend-warning-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  background: #d64545;
+  color: #fff;
+  text-align: center;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
 /* 1. Core Layout & Scrollbar Removal */
 body, html {
   margin: 0;
