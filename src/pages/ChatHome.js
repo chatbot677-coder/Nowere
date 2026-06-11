@@ -26,8 +26,6 @@ function ChatHome() {
   const [selectedPairs, setSelectedPairs] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [backendWarning, setBackendWarning] = useState("");
-
-  const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const backendWarningTimer = useRef(null);
 
@@ -41,10 +39,9 @@ function ChatHome() {
     const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
     fetchJson(`${apiBase}/api/user`, { credentials: "include" })
       .then((data) => {
-        setUser(data);
         setIsAuthenticated(true);
-        const name = data?.displayName || data?.email?.split("@")[0] || "User";
-        document.title = name;
+        const displayName = data?.displayName || data?.email?.split("@")[0] || "User";
+        document.title = displayName;
       })
       .catch((err) => {
         setIsAuthenticated(false);

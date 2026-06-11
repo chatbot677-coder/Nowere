@@ -92,7 +92,7 @@ const Toolbar = ({ onSelectChat, onNewChat, onBackendStatus, activeChatId, isAut
     }, 2000); // every 2 seconds
 
     return () => clearInterval(interval);
-  }, [fetchChats]);
+  }, [fetchChats, isAuthenticated]);
 
   /* 🔥 INSTANT UPDATE AFTER NEW CHAT */
   useEffect(() => {
