@@ -8,7 +8,7 @@ const socket = io(apiBase, {
   withCredentials: true,
 });
 
-const Messeges = () => {
+const Messeges = ({ forwardPackage, onForwardComplete }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [user, setUser] = useState(null);
 
@@ -23,6 +23,9 @@ const Messeges = () => {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [typing, setTyping] = useState("");
+  const [forwardRecipients, setForwardRecipients] = useState([]);
+
+  const isForwardMode = Boolean(forwardPackage);
 
   /* ===============================
      DRAG STATES
@@ -188,7 +191,77 @@ const Messeges = () => {
 
     return () => clearTimeout(timer);
   }, [search]);
+  useEffect(() => {
+    if (forwardPackage) {
+      setIsOpen(true);
+      setSelectedUser(null);
+      setConversationId(null);
+      setMessages([]);
+      setForwardRecipients([]);
+    }
+  }, [forwardPackage]);
 
+  const toggleRecipient = (u) => {
+    if (!isForwardMode) {
+      openChat(u);
+      return;
+    }
+
+    setForwardRecipients((prev) =>
+      prev.includes(u._id)
+        ? prev.filter((id) => id !== u._id)
+        : [...prev, u._id]
+    );
+  };
+
+  const sendForwardedPackage = async () => {
+    if (!forwardPackage || forwardRecipients.length === 0 || !user) return;
+
+    try {
+      for (const recipientId of forwardRecipients) {
+        const res = await fetch(
+          `${apiBase}/api/messages/start`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              userId: recipientId,
+            }),
+          }
+        );
+
+        const convo = await res.json();
+
+        await fetch(
+          `${apiBase}/api/messages/send`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+              conversationId: convo._id,
+              receiverId: recipientId,
+              text: forwardPackage,
+              senderId: user.id,
+            }),
+          }
+        );
+      }
+
+      setForwardRecipients([]);
+      onForwardComplete?.();
+      loadInbox();
+      alert("Forwarded message package to selected users.");
+    } catch (err) {
+      console.error("Failed to forward message package:", err);
+      alert("Unable to send forwarded message. Please try again.");
+    }
+  };
   /* ===============================
      OPEN CHAT
   =============================== */
@@ -323,32 +396,63 @@ const Messeges = () => {
         </div>
       )}
 
+      {isOpen && isForwardMode && (
+        <div className="forward-preview">
+          <div className="forward-header">
+            <span>Forward package preview</span>
+            <span>{forwardRecipients.length} user{forwardRecipients.length === 1 ? "" : "s"} selected</span>
+          </div>
+          <pre>{forwardPackage}</pre>
+        </div>
+      )}
+
+      {isOpen && isForwardMode && forwardRecipients.length > 0 && (
+        <div className="forward-action-bar">
+          <button
+            className="forward-send"
+            onClick={sendForwardedPackage}
+          >
+            <img src={Enter} alt="Send" />
+          </button>
+        </div>
+      )}
+
       {/* SEARCH USERS */}
       {users.length > 0 && (
         <div className="messeges-list">
-          {users.map((u) => (
-            <div
-              key={u._id}
-              className="messeges-item"
-              onClick={() => openChat(u)}
-            >
-              <img
-                src={u.photo}
-                alt=""
-                className="avatar"
-              />
+          {users.map((u) => {
+            const selected = forwardRecipients.includes(u._id);
 
-              <div className="text">
-                <span>
-                  {u.displayName}
-                  {onlineUsers.includes(u._id)
-                    ? " 🟢"
-                    : " ⚫"}
-                </span>
-                <p>Start chat</p>
+            return (
+              <div
+                key={u._id}
+                className={`messeges-item ${isForwardMode ? "forward-mode" : ""} ${selected ? "forward-selected" : ""}`}
+                onClick={() => toggleRecipient(u)}
+              >
+                <img
+                  src={u.photo}
+                  alt=""
+                  className="avatar"
+                />
+
+                <div className="text">
+                  <span>
+                    {u.displayName}
+                    {onlineUsers.includes(u._id)
+                      ? " 🟢"
+                      : " ⚫"}
+                  </span>
+                  <p>{isForwardMode ? "Select to forward" : "Start chat"}</p>
+                </div>
+
+                {isForwardMode && (
+                  <button className="open-only-btn" type="button" disabled>
+                    Select
+                  </button>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -362,11 +466,13 @@ const Messeges = () => {
 
             if (!other) return null;
 
+            const selected = forwardRecipients.includes(other._id);
+
             return (
               <div
                 key={item._id}
-                className="messeges-item"
-                onClick={() => openChat(other)}
+                className={`messeges-item ${isForwardMode ? "forward-mode" : ""} ${selected ? "forward-selected" : ""}`}
+                onClick={() => toggleRecipient(other)}
               >
                 <img
                   src={other.photo}
@@ -385,10 +491,15 @@ const Messeges = () => {
                   </span>
 
                   <p>
-                    {item.lastMessage ||
-                      "No messages"}
+                    {isForwardMode ? "Select to forward" : item.lastMessage || "No messages"}
                   </p>
                 </div>
+
+                {isForwardMode && (
+                  <button className="open-only-btn" type="button">
+                    Select
+                  </button>
+                )}
               </div>
             );
           })}
@@ -396,7 +507,7 @@ const Messeges = () => {
       )}
 
       {/* CHAT BOX */}
-      {isOpen && selectedUser && (
+      {isOpen && !isForwardMode && selectedUser && (
         <div
           className="chat-box"
           style={{ height: chatHeight }}
@@ -410,23 +521,45 @@ const Messeges = () => {
           />
 
           <div className="chat-head">
-            {selectedUser.displayName}
+            <span>{selectedUser.displayName}</span>
+            <button
+              className="chat-close"
+              onClick={() => {
+                setSelectedUser(null);
+                setConversationId(null);
+                setMessages([]);
+              }}
+              aria-label="Close chat"
+            >
+              ×
+            </button>
           </div>
 
           <div className="chat-messages" ref={chatMessagesRef}>
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={
-                  m.sender === user.id ||
-                  m.sender?._id === user.id
-                    ? "me"
-                    : "them"
-                }
-              >
-                {m.text}
-              </div>
-            ))}
+            {messages.map((m, i) => {
+              const isForwarded = m.text?.includes("Forwarded Message");
+              
+              return (
+                <div
+                  key={i}
+                  className={
+                    m.sender === user.id ||
+                    m.sender?._id === user.id
+                      ? "me"
+                      : "them"
+                  }
+                >
+                  {isForwarded ? (
+                    <div className="forwarded-message-box">
+                      <div className="forwarded-label">📦 Forwarded Message</div>
+                      <pre className="forwarded-content">{m.text}</pre>
+                    </div>
+                  ) : (
+                    m.text
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="typing-text">

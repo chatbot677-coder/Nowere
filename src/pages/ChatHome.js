@@ -12,8 +12,6 @@ import Toolbar from "../components/Toolbar";
 import Messeges from "../components/Messeges";
 import ReactMarkdown from "react-markdown";
 import "../components/Toolbar.css";
-import { forwardChat } from "../components/ForwardChatButton";
-
 function ChatHome() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -25,6 +23,7 @@ function ChatHome() {
   const [chatId, setChatId] = useState(null);
   const [selectedPairs, setSelectedPairs] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
+  const [forwardPackage, setForwardPackage] = useState(null);
   const [backendWarning, setBackendWarning] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const backendWarningTimer = useRef(null);
@@ -93,6 +92,42 @@ function ChatHome() {
     );
   };
 
+  const handleForward = () => {
+    if (selectedPairs.length === 0) {
+      alert("Please select one or more messages to forward.");
+      setForwardPackage(null);
+      return;
+    }
+
+    const selectedText = selectedPairs
+      .sort((a, b) => a - b)
+      .map((pairIndex) => {
+        const userMsg = messages[pairIndex];
+        const aiMsg = messages[pairIndex + 1];
+
+        let text = "";
+
+        if (userMsg) {
+          text += `You: ${userMsg.content}\n`;
+        }
+
+        if (aiMsg) {
+          text += `Assistant: ${aiMsg.content}`;
+        }
+
+        return text;
+      })
+      .join("\n\n");
+
+    setForwardPackage(`----- Forwarded Message -----\n${selectedText}\n-----`);
+  };
+
+  useEffect(() => {
+    if (selectedPairs.length === 0 && forwardPackage) {
+      setForwardPackage(null);
+    }
+  }, [selectedPairs, forwardPackage]);
+
   // ✅ NEW (popup menu)
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef(null);
@@ -145,42 +180,67 @@ function ChatHome() {
   };
 
 
-const copyAllMessages = async () => {
-  if (selectedPairs.length === 0) {
-    alert("Please select chat first.");
-    return;
-  }
+  const copyAllMessages = async () => {
+    if (selectedPairs.length === 0) {
+      alert("Please select chat first.");
+      return;
+    }
 
-  const selectedText = selectedPairs
-    .sort((a, b) => a - b)
-    .map((pairIndex) => {
-      const userMsg = messages[pairIndex];
-      const aiMsg = messages[pairIndex + 1];
+    const selectedText = selectedPairs
+      .sort((a, b) => a - b)
+      .map((pairIndex) => {
+        const userMsg = messages[pairIndex];
+        const aiMsg = messages[pairIndex + 1];
 
-      let text = "";
+        let text = "";
 
-      if (userMsg) {
-        text += `You: ${userMsg.content}\n`;
-      }
+        if (userMsg) {
+          text += `You: ${userMsg.content}\n`;
+        }
 
-      if (aiMsg) {
-        text += `Assistant: ${aiMsg.content}`;
-      }
+        if (aiMsg) {
+          text += `Assistant: ${aiMsg.content}`;
+        }
 
-      return text;
-    })
-    .join("\n\n");
+        return text;
+      })
+      .join("\n\n");
 
-  try {
-    await navigator.clipboard.writeText(selectedText);
-    alert("Selected chat copied to clipboard.");
-  } catch (err) {
-    console.error(err);
-    alert("Unable to copy selected chat.");
-  }
-};
+    try {
+      await navigator.clipboard.writeText(selectedText);
+      alert("Selected chat copied to clipboard.");
+    } catch (err) {
+      console.error(err);
+      alert("Unable to copy selected chat.");
+    }
+  };
 
+  const startListening = () => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
 
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+
+    recognition.lang = "en-US";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.start();
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript); // puts spoken text into input box
+    };
+
+    recognition.onerror = (event) => {
+      console.error(event.error);
+    };
+  };
 
   const handleVoice = () => {
     alert("Voice input coming soon!");
@@ -277,11 +337,15 @@ const copyAllMessages = async () => {
       )}
       <div className="app-layout">
         <Toolbar
-          onSelectChat={onSelectChat}
+          onSelectChat={async (chat) => {
+            setForwardPackage(null);
+            await onSelectChat(chat);
+          }}
           onBackendStatus={(isOnline) => {
             if (!isOnline) showBackendWarning();
           }}
           onNewChat={() => {
+            setForwardPackage(null);
             setMessages([]);
             setChatId(null);
             navigate('/');
@@ -300,7 +364,13 @@ const copyAllMessages = async () => {
               }}
               showChatActions={selectedPairs.length > 0}
               onCopyAll={copyAllMessages}
-              onForward={() => forwardChat(messages)}
+              onForward={() => {
+                if (selectedPairs.length === 0) {
+                  setForwardPackage(null);
+                  return;
+                }
+                handleForward();
+              }}
             />
           </div>
 
@@ -486,7 +556,13 @@ const copyAllMessages = async () => {
                 />
 
                 <div className="icons">
-                  <img src={mic} alt="mic" className="icon mic" />
+                  <img
+                    src={mic}
+                    alt="mic"
+                    className="icon mic"
+                    onClick={startListening}
+                    style={{ cursor: "pointer" }}
+                  />
                   <img
                     src={input.trim() ? Enter : voice}
                     alt="action"
@@ -499,7 +575,10 @@ const copyAllMessages = async () => {
 
           </div>
         </div>
-        <Messeges />
+        <Messeges
+          forwardPackage={forwardPackage}
+          onForwardComplete={() => setForwardPackage(null)}
+        />
       </div>
     </>
   );

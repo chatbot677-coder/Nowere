@@ -311,9 +311,17 @@ body.sidebar-open .chat-wrapper {
 }
 
 .icon {
+  border-radius: 50%;
+  padding: clamp(1px, 1vw, 2px);
   width: clamp(16px, 3vw, 20px);
   height: clamp(16px, 3vw, 22px);
   cursor: pointer;
+}
+
+.icon:hover {
+  background-color: #000000;
+  transform: scale(1.3);
+  transition: 0.1s;
 }
 
 .icon.voice {
