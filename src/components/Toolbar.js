@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import "./Toolbar.css";
-import logoVideo from "../assets/lovo video.mp4";
+import logoVideo from "../assets/logo video.mp4";
 import { fetchJson } from "../utils/api";
 
 const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';

@@ -61,7 +61,7 @@ function Navbar({ selectionMode, setSelectionMode, showChatActions, onCopyAll, o
           onClick={() => (window.location.href = "/")}
           className="logo"
           alt="Logo"
-          style={{ width: "30px", height: "auto", cursor: "pointer" }}
+          style={{ width: "35%", height: "auto", cursor: "pointer" }}
         />
       </div>
 

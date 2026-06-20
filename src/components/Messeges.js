@@ -574,6 +574,7 @@ const Messeges = ({ forwardPackage, onForwardComplete }) => {
                   e.target.value
                 )
               }
+              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               placeholder="Type message..."
             />
 

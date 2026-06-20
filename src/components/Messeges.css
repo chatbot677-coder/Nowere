@@ -463,7 +463,7 @@
 
 .me{
   align-self:flex-end;
-  background:#4a9eff;
+  background:#333333;
   color:white;
   box-shadow:0 2px 6px rgba(74,158,255,0.3);
 }
@@ -471,13 +471,13 @@
 .them{
   align-self:flex-start;
   background:#333333;
-  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  box-shadow:0 2px 6px rgba(74,158,255,0.3);
 }
 
 /* FORWARDED MESSAGE BOX */
 .forwarded-message-box{
-  border-left:4px solid #4a9eff;
-  background:rgba(74,158,255,0.1);
+  border-left:4px solid #3492ff;
+  background:rgba(0, 15, 68, 0.163);
   padding:10px;
   border-radius:6px;
   max-width:100%;
@@ -486,8 +486,8 @@
 .forwarded-label{
   font-size:12px;
   font-weight:600;
-  color:#4a9eff;
-  margin-bottom:8px;
+  color:#3492ff;
+  margin-bottom:5px;
   text-transform:uppercase;
   letter-spacing:0.5px;
 }
