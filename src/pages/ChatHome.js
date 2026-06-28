@@ -12,6 +12,7 @@ import Toolbar from "../components/Toolbar";
 import Messeges from "../components/Messeges";
 import ReactMarkdown from "react-markdown";
 import "../components/Toolbar.css";
+
 function ChatHome() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -24,10 +25,17 @@ function ChatHome() {
   const [selectedPairs, setSelectedPairs] = useState([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [forwardPackage, setForwardPackage] = useState(null);
+  const [forwardItems, setForwardItems] = useState([]);
   const [openedForwardedMessage, setOpenedForwardedMessage] = useState(null);
   const [backendWarning, setBackendWarning] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const backendWarningTimer = useRef(null);
+
+  // IMAGE UPLOAD STATES & REFS
+  const fileInputRef = useRef(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageSize, setImageSize] = useState(120);
 
   const showBackendWarning = useCallback(() => {
     if (backendWarningTimer.current) clearTimeout(backendWarningTimer.current);
@@ -46,7 +54,6 @@ function ChatHome() {
       .catch((err) => {
         setIsAuthenticated(false);
         const errorMsg = String(err.message || "").toLowerCase();
-        // Only show backend warning for actual connection failures, not auth errors
         if (errorMsg.includes("backend not running") && !errorMsg.includes("unauthorized")) {
           showBackendWarning();
         }
@@ -68,7 +75,6 @@ function ChatHome() {
       }
     } catch (err) {
       const errorMsg = String(err.message || "").toLowerCase();
-      // Only show backend warning for actual connection failures, not auth errors
       if (errorMsg.includes("backend not running") && !errorMsg.includes("unauthorized")) {
         showBackendWarning();
       }
@@ -84,7 +90,7 @@ function ChatHome() {
 
   const togglePair = (index) => {
     const base = index % 2 === 0 ? index : index - 1;
-    const pairId = base; // unique id for pair
+    const pairId = base;
 
     setSelectedPairs((prev) =>
       prev.includes(pairId)
@@ -93,63 +99,79 @@ function ChatHome() {
     );
   };
 
+  const formatForwardMessage = (msg, label) => {
+    const contentText = msg?.content?.trim() || "(image only)";
+    let text = `${label}: ${contentText}`;
+
+    if (msg?.image) {
+      text += `\n\n![Forwarded image](${msg.image})`;
+    }
+
+    return text;
+  };
+
   const handleForward = () => {
     if (selectedPairs.length === 0) {
       alert("Please select one or more messages to forward.");
       setForwardPackage(null);
+      setForwardItems([]);
       return;
     }
 
-    const selectedText = selectedPairs
-      .sort((a, b) => a - b)
+    const sortedPairs = [...selectedPairs].sort((a, b) => a - b);
+
+    const selectedText = sortedPairs
       .map((pairIndex) => {
         const userMsg = messages[pairIndex];
         const aiMsg = messages[pairIndex + 1];
 
-        let text = "";
+        const parts = [];
+        if (userMsg) parts.push(formatForwardMessage(userMsg, "You"));
+        if (aiMsg) parts.push(formatForwardMessage(aiMsg, "Assistant"));
 
-        if (userMsg) {
-          text += `You: ${userMsg.content}\n`;
-        }
-
-        if (aiMsg) {
-          text += `Assistant: ${aiMsg.content}`;
-        }
-
-        return text;
+        return parts.join("\n\n");
       })
       .join("\n\n");
 
-    setForwardPackage(`${selectedText}`);
+    const selectedItems = sortedPairs.flatMap((pairIndex) => {
+      const userMsg = messages[pairIndex];
+      const aiMsg = messages[pairIndex + 1];
+      return [userMsg, aiMsg]
+        .filter(Boolean)
+        .map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+          image: msg.image || null,
+        }));
+    });
+
+    setForwardPackage(selectedText);
+    setForwardItems(selectedItems);
   };
 
   useEffect(() => {
-    if (selectedPairs.length === 0 && forwardPackage) {
+    if (selectedPairs.length === 0 && forwardPackage && forwardItems.length > 0) {
       setForwardPackage(null);
+      setForwardItems([]);
     }
-  }, [selectedPairs, forwardPackage]);
+  }, [selectedPairs, forwardPackage, forwardItems]);
 
-  // ✅ NEW (popup menu)
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef(null);
-
   const messagesEndRef = useRef(null);
   const scrollContainerRef = useRef(null);
-
 
   const onSelectChat = async (chat) => {
     loadChat(chat._id);
     navigate(`/chat/${chat._id}`);
   };
 
-  // TIMER
   useEffect(() => {
     let interval;
     let start;
 
     if (isLoading) {
       start = Date.now();
-
       interval = setInterval(() => {
         const elapsed = (Date.now() - start) / 1000;
         setTimer(elapsed);
@@ -200,17 +222,11 @@ function ChatHome() {
         const userMsg = messages[pairIndex];
         const aiMsg = messages[pairIndex + 1];
 
-        let text = "";
+        const parts = [];
+        if (userMsg) parts.push(formatForwardMessage(userMsg, "You"));
+        if (aiMsg) parts.push(formatForwardMessage(aiMsg, "Assistant"));
 
-        if (userMsg) {
-          text += `You: ${userMsg.content}\n`;
-        }
-
-        if (aiMsg) {
-          text += `Assistant: ${aiMsg.content}`;
-        }
-
-        return text;
+        return parts.join("\n\n");
       })
       .join("\n\n");
 
@@ -227,6 +243,7 @@ function ChatHome() {
     setSelectedPairs([]);
     setSelectionMode(false);
     setForwardPackage(null);
+    setForwardItems([]);
   };
 
   const startListening = () => {
@@ -239,16 +256,14 @@ function ChatHome() {
     }
 
     const recognition = new SpeechRecognition();
-
     recognition.lang = "en-US";
     recognition.continuous = false;
     recognition.interimResults = false;
-
     recognition.start();
 
     recognition.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
-      setInput(transcript); // puts spoken text into input box
+      setInput(transcript);
     };
 
     recognition.onerror = (event) => {
@@ -260,12 +275,31 @@ function ChatHome() {
     alert("Voice input coming soon!");
   };
 
-  // ✅ NEW (toggle menu)
   const imageProcessing = () => {
     setShowMenu((prev) => !prev);
   };
 
-  // ✅ NEW (close on outside click)
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        alert("Please select an image file.");
+        return;
+      }
+      setSelectedFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+    setShowMenu(false);
+  };
+
+  const removeSelectedImage = () => {
+    setSelectedFile(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
@@ -278,28 +312,48 @@ function ChatHome() {
   }, []);
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && !selectedFile) || isLoading) return;
 
-    const userMessage = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
-    const currentInput = input;
-    setInput("");
     setIsLoading(true);
+
+    let imageBase64 = null;
+    if (selectedFile) {
+      try {
+        imageBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(selectedFile);
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = (error) => reject(error);
+        });
+      } catch (err) {
+        console.error("Base64 conversion failed:", err);
+      }
+    }
+
+    // Fallback message text if user uploads only an image with no text
+    const textContent = input.trim() || "Analyze this image";
+
+    const userMessage = { role: "user", content: textContent, image: imageBase64 };
+    setMessages((prev) => [...prev, userMessage]);
+    
+    setInput("");
+    removeSelectedImage();
 
     const startTime = Date.now();
     const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
 
     try {
-      // Save message to DB and get the AI reply from the backend saved chat
       const dbData = await fetchJson(`${apiBase}/api/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          message: currentInput,
+          message: textContent,
           chatId: chatId,
+          image: imageBase64,
         }),
       });
+
       if (dbData.chatId) {
         setChatId(dbData.chatId);
         navigate(`/chat/${dbData.chatId}`);
@@ -310,7 +364,6 @@ function ChatHome() {
       const duration = formatTime((endTime - startTime) / 1000);
 
       setIsLoading(false);
-
       setMessages((prev) => [
         ...prev,
         {
@@ -324,7 +377,6 @@ function ChatHome() {
       console.error("Chat request failed:", err);
       setIsLoading(false);
       const errorMsg = String(err.message || "").toLowerCase();
-      // Only show backend warning for actual connection failures, not auth errors
       if (errorMsg.includes("backend not running") && !errorMsg.includes("unauthorized")) {
         showBackendWarning();
       }
@@ -344,6 +396,19 @@ function ChatHome() {
 
   const markdownComponents = {
     p: ({ children }) => <span>{children}</span>,
+    img: ({ alt, src }) => (
+      <img
+        src={src}
+        alt={alt || "Forwarded image"}
+        className="chat-message-image forwarded-chat-image"
+        style={{
+          width: "auto",
+          maxWidth: "140px",
+          maxHeight: "140px",
+          height: "auto",
+        }}
+      />
+    ),
     code({ inline, className, children }) {
       const language = className?.replace("language-", "").toUpperCase() || "CODE";
 
@@ -355,15 +420,13 @@ function ChatHome() {
         <div className="code-block">
           <div className="code-header">
             <span>{language}</span>
-
             <button
               className="copy-btn"
               onClick={() => navigator.clipboard.writeText(String(children).trim())}
             >
-              📋
+              <img src={copyIcon} alt="Copy code" className="copy-icon" />
             </button>
           </div>
-
           <pre>
             <code>{children}</code>
           </pre>
@@ -381,13 +444,51 @@ function ChatHome() {
       const assistant = text.substring(assistantIndex + 10).trim();
       return { user, assistant };
     }
-    // fallback: no split found
     return { user: null, assistant: text };
+  };
+
+  const parseForwardedMessages = (text) => {
+    if (!text) return [];
+
+    const cleanedText = String(text)
+      .replace(/^\s*📦\s*Forwarded Message\s*/i, "")
+      .replace(/^\s*Forwarded Message\s*/i, "")
+      .trim();
+
+    const lines = cleanedText.split(/\r?\n/);
+    const messages = [];
+    let currentRole = null;
+    let currentContent = [];
+
+    const commit = () => {
+      if (!currentRole || currentContent.length === 0) return;
+      const content = currentContent.join("\n").trim();
+      if (content) {
+        messages.push({ role: currentRole, content });
+      }
+    };
+
+    for (const line of lines) {
+      const match = line.match(/^(You|Assistant)\s*:\s*(.*)$/i);
+      if (match) {
+        commit();
+        currentRole = match[1].toLowerCase() === "you" ? "user" : "assistant";
+        currentContent = [match[2] || ""];
+      } else {
+        currentContent.push(line);
+      }
+    }
+
+    commit();
+
+    if (messages.length === 0) {
+      return [{ role: "assistant", content: cleanedText }];
+    }
+    return messages;
   };
 
   return (
     <>
-      
       <Login />
       {backendWarning && (
         <div className="backend-warning-banner">{backendWarning}</div>
@@ -411,7 +512,6 @@ function ChatHome() {
           isAuthenticated={isAuthenticated}
         />
         <div className="main-content">
-          
           <div className="topbar">
             <Navbar
               selectionMode={selectionMode}
@@ -493,7 +593,6 @@ function ChatHome() {
                         key={pairId}
                         className={`chat-pair ${isSelected ? "selected" : ""}`}
                       >
-                        {/* Selection Checkbox */}
                         <input
                           type="checkbox"
                           className="pair-checkbox"
@@ -507,49 +606,12 @@ function ChatHome() {
                             className={`message-row ${msg.role === "user" ? "user" : "assistant"}`}
                           >
                             <div className="bubble">
-                              <ReactMarkdown
-                                components={{
-                                  p: ({ children }) => <span>{children}</span>,
-
-                                  code({ inline, className, children }) {
-                                    const language =
-                                      className?.replace("language-", "").toUpperCase() || "CODE";
-
-                                    if (inline) {
-                                      return (
-                                        <code className="inline-code">
-                                          {children}
-                                        </code>
-                                      );
-                                    }
-
-                                    return (
-                                      <div className="code-block">
-                                        <div className="code-header">
-                                          <span>{language}</span>
-
-                                          <button
-                                            className="copy-btn"
-                                            onClick={() =>
-                                              navigator.clipboard.writeText(
-                                                String(children).trim()
-                                              )
-                                            }
-                                          >
-                                            <div className="copy-icon-wrapper">
-                                              <img src={copyIcon} alt="copy" className="copy-icon"/>
-                                            </div>
-                                          </button>
-                                        </div>
-
-                                        <pre>
-                                          <code>{children}</code>
-                                        </pre>
-                                      </div>
-                                    );
-                                  },
-                                }}
-                              >
+                              {msg.image && (
+                                <div className="chat-message-image-container">
+                                  <img src={msg.image} alt="Uploaded attachment" className="chat-message-image" />
+                                </div>
+                              )}
+                              <ReactMarkdown components={markdownComponents}>
                                 {msg.content}
                               </ReactMarkdown>
                             </div>
@@ -583,20 +645,49 @@ function ChatHome() {
             )}
 
             <div className="input-container">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                style={{ display: "none" }} 
+                accept="image/*"
+                onChange={handleFileChange}
+              />
+
               <div className="input-box" style={{ position: "relative" }}>
-                
-                {/* PLUS BUTTON */}
+                {imagePreview && (
+                  <div className="image-preview-container">
+                    <div className="preview-image-wrapper">
+                      <img
+                        src={imagePreview}
+                        alt="Upload preview"
+                        className="preview-thumbnail"
+                        style={{ width: `${imageSize}px`, height: `${imageSize}px` }}
+                      />
+                      <button className="remove-preview-btn" onClick={removeSelectedImage} title="Remove image">
+                        ✕
+                      </button>
+                    </div>
+                    <div className="image-size-control">
+                      <label htmlFor="image-size-slider">Size</label>
+                      <input
+                        id="image-size-slider"
+                        type="range"
+                        min="60"
+                        max="240"
+                        value={imageSize}
+                        onChange={(e) => setImageSize(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                )}
                 <button className="plus" onClick={imageProcessing}>+</button>
 
-                {/* POPUP MENU */}
                 {showMenu && (
                   <div className="popup-menu" ref={menuRef}>
-                    <div className="menu-item" onClick={() => 
-                      alert("Upload Image")}>
+                    <div className="menu-item" onClick={() => fileInputRef.current.click()}>
                       📎 Add photos & files
                     </div>
-                    <div className="menu-item" onClick={() => 
-                      alert("Create Image")}>
+                    <div className="menu-item" onClick={() => alert("Create Image")}>
                       🖼️ Create image
                     </div>
                     <div className="menu-item more">⋯ More →</div>
@@ -621,10 +712,10 @@ function ChatHome() {
                     style={{ cursor: "pointer" }}
                   />
                   <img
-                    src={input.trim() ? Enter : voice}
+                    src={(input.trim() || selectedFile) ? Enter : voice}
                     alt="action"
                     className="icon voice"
-                    onClick={input.trim() ? sendMessage : handleVoice}
+                    onClick={(input.trim() || selectedFile) ? sendMessage : handleVoice}
                   />
                 </div>
               </div>
@@ -634,21 +725,22 @@ function ChatHome() {
         </div>
         <Messeges
           forwardPackage={forwardPackage}
-          onForwardComplete={() => setForwardPackage(null)}
+          forwardItems={forwardItems}
+          onForwardComplete={() => {
+            setForwardPackage(null);
+            setForwardItems([]);
+          }}
           onPrepareForward={(text) => setForwardPackage(text)}
           onOpenForwarded={(text) => setOpenedForwardedMessage(text)}
           onOpenForwardedAsChat={async (text, senderName) => {
             try {
               const apiBase = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
 
+              const newMessages = parseForwardedMessages(text);
+
               const payload = {
                 title: `Forwarded by ${senderName || "Unknown"}`,
-                messages: [
-                  {
-                    role: "assistant",
-                    content: text,
-                  },
-                ],
+                messages: newMessages,
               };
 
               const created = await fetchJson(`${apiBase}/api/chat/create`, {
